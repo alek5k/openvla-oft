@@ -15,6 +15,9 @@ Transforms adopt the following structure:
     }
 """
 
+from xembench.datasets.rlds_datasets import Xembench_Panda_PandaGripper_PickPlaceCube_50eps_20251007_1807, Xembench_UR5e_Robotiq85Gripper_PickPlaceCube_50eps_20251007_1756
+
+
 from typing import Any, Dict
 
 import tensorflow as tf
@@ -841,6 +844,39 @@ def libero_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     return trajectory
 
 
+def xembench_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
+    # Copy LIBERO style:
+    # gripper action is in -1 (open)...1 (close) --> clip to 0...1, flip --> +1 = open, 0 = close
+    gripper_action = trajectory["action"][:, -1:]
+    gripper_action = invert_gripper_actions(tf.clip_by_value(gripper_action, 0, 1))
+
+    trajectory["action"] = tf.concat(
+        [
+            trajectory["action"][:, :6],
+            gripper_action,
+        ],
+        axis=1,
+    )
+    trajectory["observation"]["EEF_state"] = trajectory["observation"]["eef_pose_oxe"]
+    trajectory["observation"]["gripper_state"] = trajectory["observation"]["robot0_gripper_qpos"]  # 2D gripper state
+    trajectory["language_instruction"] = trajectory["observation"]["language_instruction"]
+    # Old:
+    # import tensorflow_graphics.geometry.transformation as tft
+    # robot_eef_pos = trajectory["observation"]["robot0_eef_pos"]
+    # robot_eef_quat = trajectory["observation"]["robot0_eef_quat"]
+    # robot_eef_rot = tft.euler.from_quaternion(robot_eef_quat)
+    # trajectory["observation"]["EEF_state"] = tf.concat((robot_eef_pos, robot_eef_rot), axis=-1)
+    
+    # trajectory["language_instruction"] = tf.fill(
+    #     [tf.shape(robot_eef_pos)[0], 1],
+    #     "pick up the red cube and put it in bin 1"
+    # )
+
+    # print("============================================")
+    # print(trajectory)
+    # print("============================================")
+    return trajectory
+
 def aloha_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     # Don't need to do anything because dataset is already in the correct format
     return trajectory
@@ -930,4 +966,8 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     "aloha1_fold_shirt_30_demos": aloha_dataset_transform,
     "aloha1_scoop_X_into_bowl_45_demos": aloha_dataset_transform,
     "aloha1_put_X_into_pot_300_demos": aloha_dataset_transform,
+    ### Xembench
+    Xembench_Panda_PandaGripper_PickPlaceCube_50eps_20251007_1807.name: xembench_dataset_transform,
+    Xembench_UR5e_Robotiq85Gripper_PickPlaceCube_50eps_20251007_1756.name: xembench_dataset_transform,
+    
 }
