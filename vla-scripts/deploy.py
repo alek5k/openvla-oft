@@ -85,8 +85,16 @@ class OpenVLAServer:
             observation = payload
             instruction = observation["instruction"]
 
+            observation_decoded = {}
+            for key, val in observation.items():
+                try:
+                    observation_decoded[key] = json_numpy.loads(val)
+                except:
+                    observation_decoded[key] = val
+
+
             action = get_vla_action(
-                self.cfg, self.vla, self.processor, observation, instruction, action_head=self.action_head, proprio_projector=self.proprio_projector, use_film=self.cfg.use_film,
+                self.cfg, self.vla, self.processor, observation_decoded, instruction, action_head=self.action_head, proprio_projector=self.proprio_projector, use_film=self.cfg.use_film,
             )
 
             if double_encode:
