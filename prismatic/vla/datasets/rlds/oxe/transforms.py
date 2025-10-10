@@ -15,8 +15,6 @@ Transforms adopt the following structure:
     }
 """
 
-from xembench.datasets.rlds_datasets import Xembench_Panda_PandaGripper_PickPlaceCube_50eps_20251007_1807, Xembench_UR5e_Robotiq85Gripper_PickPlaceCube_50eps_20251007_1756
-
 
 from typing import Any, Dict
 
@@ -966,8 +964,7 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     "aloha1_fold_shirt_30_demos": aloha_dataset_transform,
     "aloha1_scoop_X_into_bowl_45_demos": aloha_dataset_transform,
     "aloha1_put_X_into_pot_300_demos": aloha_dataset_transform,
-    ### Xembench
-    Xembench_Panda_PandaGripper_PickPlaceCube_50eps_20251007_1807.name: xembench_dataset_transform,
-    Xembench_UR5e_Robotiq85Gripper_PickPlaceCube_50eps_20251007_1756.name: xembench_dataset_transform,
-    
 }
+from xembench.datasets.rlds_datasets import zarr_to_rlds_dataset_mapping
+for dataset in zarr_to_rlds_dataset_mapping.values():
+    OXE_STANDARDIZATION_TRANSFORMS[dataset.name] = xembench_dataset_transform

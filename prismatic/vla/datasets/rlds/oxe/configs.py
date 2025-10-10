@@ -27,7 +27,7 @@ Configuration adopts the following structure:
 from enum import IntEnum
 
 from prismatic.vla.datasets.rlds.oxe.utils.droid_utils import zero_action_filter
-from xembench.datasets.rlds_datasets import Xembench_Panda_PandaGripper_PickPlaceCube_50eps_20251007_1807, Xembench_UR5e_Robotiq85Gripper_PickPlaceCube_50eps_20251007_1756
+from xembench.datasets.rlds_datasets import xembench_ur5e_Robotiq85Gripper_PickPlaceCube_60eps_20251010, xembench_Panda_PandaGripper_PickPlaceCube_60eps_20251010
 
 # Defines Proprioceptive State Encoding Schemes
 class StateEncoding(IntEnum):
@@ -677,23 +677,6 @@ OXE_DATASET_CONFIGS = {
         "state_encoding": StateEncoding.POS_EULER,
         "action_encoding": ActionEncoding.EEF_POS,
     },
-    ### Xembench
-    # "xembench__panda__panda_gripper__pick_place_cube_50eps_20251007_1807": 
-    Xembench_Panda_PandaGripper_PickPlaceCube_50eps_20251007_1807.name: {
-        "image_obs_keys": {"primary": "agentview_rgb", "secondary": None, "wrist": "robot0_eye_in_hand_rgb"},
-        "depth_obs_keys": {"primary": None, "secondary": None, "wrist": None},
-        "state_obs_keys": ["EEF_state", "gripper_state"], # NOTE: This will be created from other data fields in oxe/transforms.py
-        "state_encoding": StateEncoding.POS_EULER,
-        "action_encoding": ActionEncoding.EEF_POS,
-    },
-    Xembench_UR5e_Robotiq85Gripper_PickPlaceCube_50eps_20251007_1756.name: {
-    # "xembench__u_r5e__robotiq85_gripper__pick_place_cube_50eps_20251007_1756": {
-        "image_obs_keys": {"primary": "agentview_rgb", "secondary": None, "wrist": "robot0_eye_in_hand_rgb"},
-        "depth_obs_keys": {"primary": None, "secondary": None, "wrist": None},
-        "state_obs_keys": ["EEF_state", "gripper_state"], # NOTE: This will be created from other data fields in oxe/transforms.py
-        "state_encoding": StateEncoding.POS_EULER,
-        "action_encoding": ActionEncoding.EEF_POS,
-    }, 
 
 
     ### ALOHA fine-tuning datasets
@@ -726,3 +709,14 @@ OXE_DATASET_CONFIGS = {
         "action_encoding": ActionEncoding.JOINT_POS_BIMANUAL,
     },
 }
+
+from xembench.datasets.rlds_datasets import zarr_to_rlds_dataset_mapping
+for dataset in zarr_to_rlds_dataset_mapping.values():
+    # "xembench__panda__panda_gripper__pick_place_cube_50eps_20251007_1807": 
+    OXE_DATASET_CONFIGS[dataset.name] = {
+        "image_obs_keys": {"primary": "agentview_rgb", "secondary": None, "wrist": "robot0_eye_in_hand_rgb"},
+        "depth_obs_keys": {"primary": None, "secondary": None, "wrist": None},
+        "state_obs_keys": ["EEF_state", "gripper_state"], # NOTE: This will be created from other data fields in oxe/transforms.py
+        "state_encoding": StateEncoding.POS_EULER,
+        "action_encoding": ActionEncoding.EEF_POS,
+    }
