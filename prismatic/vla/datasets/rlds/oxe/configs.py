@@ -710,8 +710,8 @@ OXE_DATASET_CONFIGS = {
     },
 }
 
-from xembench.datasets.rlds_datasets import zarr_to_rlds_dataset_mapping
-for dataset in zarr_to_rlds_dataset_mapping.values():
+from xembench.datasets.rlds_datasets import XEMBENCH_RLDS_DATASETS
+for dataset in XEMBENCH_RLDS_DATASETS:
     # "xembench__panda__panda_gripper__pick_place_cube_50eps_20251007_1807": 
     OXE_DATASET_CONFIGS[dataset.name] = {
         "image_obs_keys": {"primary": "agentview_rgb", "secondary": None, "wrist": "robot0_eye_in_hand_rgb"},
