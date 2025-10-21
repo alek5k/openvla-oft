@@ -112,6 +112,7 @@ class OpenVLAServer:
     def run(self, host: str = "0.0.0.0", port: int = 8777) -> None:
         self.app = FastAPI()
         self.app.post("/act")(self.get_server_action)
+        self.app.post("/info")(lambda: {"cfg": self.cfg})
         uvicorn.run(self.app, host=host, port=port)
 
 
