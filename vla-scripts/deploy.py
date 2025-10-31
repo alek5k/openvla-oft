@@ -32,6 +32,7 @@ from experiments.robot.openvla_utils import (
     get_action_head,
     get_processor,
     get_proprio_projector,
+    get_noisy_action_projector,
 )
 from experiments.robot.robot_utils import (
     get_image_resize_size,
@@ -64,6 +65,10 @@ class OpenVLAServer:
         if cfg.use_l1_regression or cfg.use_diffusion:
             self.action_head = get_action_head(cfg, self.vla.llm_dim)
 
+        self.noisy_action_projector = None
+        if cfg.use_diffusion:
+            self.noisy_action_projector = get_noisy_action_projector(cfg, self.vla.llm_dim)
+
         # Check that the model contains the action un-normalization key
         assert cfg.unnorm_key in self.vla.norm_stats, f"Action un-norm key {cfg.unnorm_key} not found in VLA `norm_stats`!"
 
@@ -94,7 +99,7 @@ class OpenVLAServer:
 
 
             action = get_vla_action(
-                self.cfg, self.vla, self.processor, observation_decoded, instruction, action_head=self.action_head, proprio_projector=self.proprio_projector, use_film=self.cfg.use_film,
+                self.cfg, self.vla, self.processor, observation_decoded, instruction, action_head=self.action_head, proprio_projector=self.proprio_projector, noisy_action_projector=self.noisy_action_projector, use_film=self.cfg.use_film,
             )
 
             if double_encode:
