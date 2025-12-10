@@ -842,6 +842,8 @@ def libero_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     return trajectory
 
 
+# UNCOMMENT TO DEBUG: 
+# @tf.autograph.experimental.do_not_convert
 def xembench_dataset_transform(trajectory: Dict[str, Any]) -> Dict[str, Any]:
     # Copy LIBERO style:
     # gripper action is in -1 (open)...1 (close) --> clip to 0...1, flip --> +1 = open, 0 = close
