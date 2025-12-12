@@ -43,7 +43,7 @@ class ProprioProjector(nn.Module):
         projected_features = self.act_fn1(projected_features)
         projected_features = self.dropout1(projected_features)
         projected_features = self.fc2(projected_features)
-        projected_features = self.bn1(projected_features)
+        projected_features = self.bn2(projected_features)
         projected_features = self.dropout2(projected_features)
 
         if self.training and torch.rand(1).item() < self.mask_prob:
