@@ -19,7 +19,11 @@ class ProprioProjector(nn.Module):
         self.proprio_dim = proprio_dim
 
         self.fc1 = nn.Linear(self.proprio_dim, self.llm_dim, bias=True)
+        self.bn1 = nn.BatchNorm1d(llm_dim)
+
         self.fc2 = nn.Linear(self.llm_dim, self.llm_dim, bias=True)
+        self.bn2 = nn.BatchNorm1d(llm_dim)
+
         self.act_fn1 = nn.GELU()
 
         self.noise_std = noise_std
@@ -35,9 +39,11 @@ class ProprioProjector(nn.Module):
     def forward(self, proprio: torch.Tensor = None) -> torch.Tensor:
         # proprio: (bsz, proprio_dim)
         projected_features = self.fc1(proprio)
+        projected_features = self.bn1(projected_features)
         projected_features = self.act_fn1(projected_features)
         projected_features = self.dropout1(projected_features)
         projected_features = self.fc2(projected_features)
+        projected_features = self.bn1(projected_features)
         projected_features = self.dropout2(projected_features)
 
         if self.training and torch.rand(1).item() < self.mask_prob:

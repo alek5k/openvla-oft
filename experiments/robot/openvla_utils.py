@@ -773,9 +773,9 @@ def get_vla_action(
         proprio = None
         if cfg.use_proprio:
             proprio = obs["state"]
-            proprio_norm_stats = vla.norm_stats[cfg.unnorm_key]["proprio"]
-            obs["state"] = normalize_proprio(proprio, proprio_norm_stats)
-            proprio = obs["state"]
+            # proprio_norm_stats = vla.norm_stats[cfg.unnorm_key]["proprio"]
+            # obs["state"] = normalize_proprio(proprio, proprio_norm_stats)
+            # proprio = obs["state"]
 
         # Generate action
         if action_head is None:
