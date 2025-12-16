@@ -27,7 +27,6 @@ Configuration adopts the following structure:
 from enum import IntEnum
 
 from prismatic.vla.datasets.rlds.oxe.utils.droid_utils import zero_action_filter
-from xembench.datasets.rlds_datasets import xembench_ur5e_Robotiq85Gripper_PickPlaceCube_60eps_20251010, xembench_Panda_PandaGripper_PickPlaceCube_60eps_20251010
 
 # Defines Proprioceptive State Encoding Schemes
 class StateEncoding(IntEnum):
@@ -710,7 +709,7 @@ OXE_DATASET_CONFIGS = {
     },
 }
 
-from xembench.datasets.rlds_datasets import XEMBENCH_RLDS_DATASETS
+from xembench.datasets.rlds_dataset_definitions import XEMBENCH_RLDS_DATASETS
 for dataset in XEMBENCH_RLDS_DATASETS:
     # "xembench__panda__panda_gripper__pick_place_cube_50eps_20251007_1807": 
     OXE_DATASET_CONFIGS[dataset.name] = {
