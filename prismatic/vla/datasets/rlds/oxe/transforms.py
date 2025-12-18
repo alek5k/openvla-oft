@@ -967,6 +967,6 @@ OXE_STANDARDIZATION_TRANSFORMS = {
     "aloha1_scoop_X_into_bowl_45_demos": aloha_dataset_transform,
     "aloha1_put_X_into_pot_300_demos": aloha_dataset_transform,
 }
-from xembench.datasets.rlds_datasets import XEMBENCH_RLDS_DATASETS
+from xembench.datasets.rlds_dataset_definitions import XEMBENCH_RLDS_DATASETS
 for dataset in XEMBENCH_RLDS_DATASETS:
     OXE_STANDARDIZATION_TRANSFORMS[dataset.name] = xembench_dataset_transform
