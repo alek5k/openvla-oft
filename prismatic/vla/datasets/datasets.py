@@ -33,12 +33,25 @@ class RLDSBatchTransform:
     use_wrist_image: bool = False
     use_proprio: bool = False
 
-    def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
+    def __call__(self, rlds_batch: Dict[str, Any], is_train: bool = True) -> Dict[str, Any]:
         """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
         dataset_name, current_action = rlds_batch["dataset_name"], rlds_batch["action"][0]
         img = Image.fromarray(rlds_batch["observation"]["image_primary"][0])
         lang = rlds_batch["task"]["language_instruction"].decode().lower()
         actions = rlds_batch["action"]
+
+        # debug_imgs = True
+        # if debug_imgs:
+        #     img.save("debug_img.png")  # Debugging line to save the image being processed
+        #     from xembench.image_utils import depth_to_rgb_image, instance_segmentation_to_rgb_image
+        #     depth_img = rlds_batch["observation"]["depth_primary"][0]
+        #     depth_rgb = depth_to_rgb_image(depth_img)
+        #     depth_rgb = Image.fromarray(depth_rgb)
+        #     depth_rgb.save("debug_depth.png")  # Debugging line to save the depth image being processed
+        #     egomask = rlds_batch["observation"]["egomask_primary"][0]
+        #     egomask_rgb = instance_segmentation_to_rgb_image(egomask)
+        #     egomask_rgb = Image.fromarray(egomask_rgb)
+        #     egomask_rgb.save("debug_egomask_rgb.png")  # Debugging
 
         # Construct Chat-based Prompt =>> Input is default query + language instruction, output are the action tokens
         prompt_builder = self.prompt_builder_fn("openvla")
@@ -76,10 +89,11 @@ class RLDSBatchTransform:
         return_dict = dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels, dataset_name=dataset_name, actions=actions)
 
         # Add additional inputs
+        # Loop over potentially multiple wrist images in the observation
         if self.use_wrist_image:
             all_wrist_pixels = []
             for k in rlds_batch["observation"].keys():
-                if "wrist" in k:
+                if "image" in k and "wrist" in k:
                     img_wrist = Image.fromarray(rlds_batch["observation"][k][0])
                     pixel_values_wrist = self.image_transform(img_wrist)
                     all_wrist_pixels.append(pixel_values_wrist)
@@ -104,7 +118,7 @@ class RLDSDataset(IterableDataset):
     ) -> None:
         """Lightweight wrapper around RLDS TFDS Pipeline for use with PyTorch/OpenVLA Data Loaders."""
         self.data_root_dir, self.data_mix, self.batch_transform = data_root_dir, data_mix, batch_transform
-
+        self.is_train = train
         # Configure RLDS Dataset(s)
         if self.data_mix in OXE_NAMED_MIXTURES:
             mixture_spec = OXE_NAMED_MIXTURES[self.data_mix]
@@ -122,7 +136,7 @@ class RLDSDataset(IterableDataset):
             self.data_root_dir,
             mixture_spec,
             load_camera_views=load_camera_views,
-            load_depth=False,
+            load_depth=False, # True
             load_proprio=True,
             load_language=True,
             action_proprio_normalization_type=ACTION_PROPRIO_NORMALIZATION_TYPE,
@@ -136,6 +150,8 @@ class RLDSDataset(IterableDataset):
             ),
             frame_transform_kwargs=dict(
                 resize_size=resize_resolution,
+                # depth_resize_size=resize_resolution,
+                # egomask_resize_size=resize_resolution,
                 num_parallel_calls=16,                          # For CPU-intensive ops (decoding, resizing, etc.)
             ),
             dataset_kwargs_list=per_dataset_kwargs,
@@ -173,7 +189,7 @@ class RLDSDataset(IterableDataset):
 
     def __iter__(self) -> Dict[str, Any]:
         for rlds_batch in self.dataset.as_numpy_iterator():
-            yield self.batch_transform(rlds_batch)
+            yield self.batch_transform(rlds_batch, self.is_train)
 
     def __len__(self) -> int:
         return self.dataset_length
@@ -200,7 +216,7 @@ class EpisodicRLDSDataset(RLDSDataset):
     def __iter__(self) -> Dict[str, Any]:
         for rlds_batch in self.dataset.as_numpy_iterator():
             out = [
-                self.batch_transform(tree_map(lambda x: x[i], rlds_batch))  # noqa: B023
+                self.batch_transform(tree_map(lambda x: x[i], rlds_batch), self.is_train)  # noqa: B023
                 for i in range(rlds_batch["action"].shape[0])
             ]
             yield out

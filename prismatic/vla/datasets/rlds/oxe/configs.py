@@ -715,6 +715,8 @@ for dataset in XEMBENCH_RLDS_DATASETS:
     OXE_DATASET_CONFIGS[dataset.name] = {
         "image_obs_keys": {"primary": "agentview_rgb", "secondary": None, "wrist": "robot0_eye_in_hand_rgb"},
         "depth_obs_keys": {"primary": None, "secondary": None, "wrist": None},
+        # "depth_obs_keys": {"primary": "agentview_depth", "secondary": None, "wrist": "robot0_eye_in_hand_depth"},
+        # "egomask_obs_keys": {"primary": "agentview_ego_mask", "secondary": None, "wrist": "robot0_eye_in_hand_ego_mask"},
         "state_obs_keys": ["EEF_state", "gripper_state"], # NOTE: This will be created from other data fields in oxe/transforms.py
         "state_encoding": StateEncoding.POS_EULER,
         "action_encoding": ActionEncoding.EEF_POS,

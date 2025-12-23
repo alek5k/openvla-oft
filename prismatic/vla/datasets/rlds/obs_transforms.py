@@ -38,7 +38,6 @@ def augment(obs: Dict, seed: tf.Tensor, augment_kwargs: Union[Dict, Dict[str, Di
             ),
             lambda: obs[f"image_{name}"],  # skip padding images
         )
-
     return obs
 
 
@@ -46,16 +45,21 @@ def decode_and_resize(
     obs: Dict,
     resize_size: Union[Tuple[int, int], Dict[str, Tuple[int, int]]],
     depth_resize_size: Union[Tuple[int, int], Dict[str, Tuple[int, int]]],
+    # egomask_resize_size: Union[Tuple[int, int], Dict[str, Tuple[int, int]]],
 ) -> Dict:
     """Decodes images and depth images, and then optionally resizes them."""
     image_names = {key[6:] for key in obs if key.startswith("image_")}
     depth_names = {key[6:] for key in obs if key.startswith("depth_")}
+    # egomask_names = {key[8:] for key in obs if key.startswith("egomask_")}
 
+    
     if isinstance(resize_size, tuple):
         resize_size = {name: resize_size for name in image_names}
     if isinstance(depth_resize_size, tuple):
         depth_resize_size = {name: depth_resize_size for name in depth_names}
-
+    # if isinstance(egomask_resize_size, tuple):
+    #     egomask_resize_size = {name: egomask_resize_size for name in egomask_names}
+        
     for name in image_names:
         if name not in resize_size:
             logging.warning(
@@ -95,5 +99,27 @@ def decode_and_resize(
             depth = dl.transforms.resize_depth_image(depth, size=depth_resize_size[name])
 
         obs[f"depth_{name}"] = depth
+
+    # for name in egomask_names:
+    #     if name not in egomask_resize_size:
+    #         logging.warning(
+    #             f"No egomask_resize_size was provided for egomask_{name}. This will result in 1x1 "
+    #             "padding egomask images, which may cause errors if you mix padding and non-padding images."
+    #         )
+    #     egomask = obs[f"egomask_{name}"]
+    # 
+    #     if egomask.dtype == tf.string:
+    #         if tf.strings.length(egomask) == 0:
+    #             egomask = tf.zeros((*egomask_resize_size.get(name, (1, 1)), 1), dtype=tf.uint8)
+    #         else:
+    #             egomask = tf.io.decode_image(egomask, channels=1, expand_animations=False, dtype=tf.uint8) 
+    #     
+    #     elif egomask.dtype in (tf.int32, tf.int64, tf.bool):
+    #         egomask = tf.cast(egomask, tf.uint8)
+    # 
+    #     if name in egomask_resize_size:
+    #         egomask = dl.transforms.resize_image(egomask, size=egomask_resize_size[name])
+    # 
+    #     obs[f"egomask_{name}"] = egomask
 
     return obs

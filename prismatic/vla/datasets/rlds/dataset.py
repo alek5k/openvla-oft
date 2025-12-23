@@ -26,7 +26,7 @@ from prismatic.vla.datasets.rlds.utils.data_utils import (
     pprint_data_mixture,
     tree_map,
 )
-
+# from xembench.custom_data_transforms import apply_train_only_augmentations, apply_val_or_test_augmentations
 # Initialize Overwatch =>> Wraps `logging.Logger`
 overwatch = initialize_overwatch(__name__)
 
@@ -45,6 +45,7 @@ def make_dataset_from_rlds(
     shuffle: bool = True,
     image_obs_keys: Dict[str, Optional[str]] = {},
     depth_obs_keys: Dict[str, Optional[str]] = {},
+    # egomask_obs_keys: Dict[str, Optional[str]] = {},
     state_obs_keys: List[Optional[str]] = (),
     language_key: Optional[str] = None,
     action_proprio_normalization_type: ACTION_PROPRIO_NORMALIZATION_TYPE,
@@ -153,6 +154,12 @@ def make_dataset_from_rlds(
                 new_obs[f"depth_{new}"] = tf.repeat("", traj_len)  # padding
             else:
                 new_obs[f"depth_{new}"] = old_obs[old]
+        
+        # for new, old in egomask_obs_keys.items():
+        #     if old is None:
+        #         new_obs[f"egomask_{new}"] = tf.repeat("", traj_len)  # padding
+        #     else:
+        #         new_obs[f"egomask_{new}"] = old_obs[old]
 
         if state_obs_keys:
             new_obs["proprio"] = tf.concat(
@@ -370,6 +377,7 @@ def apply_frame_transforms(
     image_augment_kwargs: Union[Dict, Dict[str, Dict]] = {},
     resize_size: Union[Tuple[int, int], Dict[str, Tuple[int, int]]] = {},
     depth_resize_size: Union[Tuple[int, int], Dict[str, Tuple[int, int]]] = {},
+    # egomask_resize_size: Union[Tuple[int, int], Dict[str, Tuple[int, int]]] = {},
     num_parallel_calls: int = tf.data.AUTOTUNE,
 ) -> dl.DLataset:
     """
@@ -405,9 +413,24 @@ def apply_frame_transforms(
         partial(
             apply_obs_transform,
             partial(obs_transforms.decode_and_resize, resize_size=resize_size, depth_resize_size=depth_resize_size),
+            # partial(obs_transforms.decode_and_resize, resize_size=resize_size, depth_resize_size=depth_resize_size, egomask_resize_size=egomask_resize_size),
         ),
         num_parallel_calls,
     )
+
+    # ------------------------------------------------------------
+    # NEW: Precondition stage, before image augmentations
+    # ------------------------------------------------------------
+    # if train:
+    #     dataset = dataset.frame_map(
+    #         partial(apply_obs_transform, apply_train_only_augmentations),
+    #         num_parallel_calls,
+    #     )
+    # else:
+    #     dataset = dataset.frame_map(
+    #         partial(apply_obs_transform, apply_val_or_test_augmentations),
+    #         num_parallel_calls,
+    #     )
 
     if train:
         # Augment all images with the same seed, skipping padding images
