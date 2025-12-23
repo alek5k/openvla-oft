@@ -320,9 +320,9 @@ class ZarrDataset(Dataset):
         if self.train and self.image_aug:
             image = self.train_image_augmentations(image)
 
-        debug_img = True
-        if debug_img:
-            image.save("debug_img_zarr.png")
+        # debug_img = True
+        # if debug_img:
+        #     image.save("debug_img_zarr.png")
 
         action = self.src_buffer["action"][idx]
         instruction = self.src_buffer["language_instruction"][idx].lower()
