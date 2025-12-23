@@ -228,6 +228,22 @@ class EpisodicRLDSDataset(RLDSDataset):
             yield out
 
 
+def bounds_q99_normalize(x, q01, q99, eps=1e-8, clip=True, zero_unused=True):
+    x = np.asarray(x, dtype=np.float32)
+    q01 = np.asarray(q01, dtype=np.float32).reshape(1, -1)
+    q99 = np.asarray(q99, dtype=np.float32).reshape(1, -1)
+
+    y = 2.0 * (x - q01) / (q99 - q01 + eps) - 1.0
+    if clip:
+        y = np.clip(y, -1.0, 1.0)
+    if zero_unused:
+        unused = np.isclose(q01, q99)
+        if np.any(unused):
+            x_norm = x_norm.copy()
+            x_norm[:, unused.reshape(-1)] = 0.0
+    return y
+
+
 
 class ZarrDataset(Dataset):
     def __init__(
@@ -258,13 +274,14 @@ class ZarrDataset(Dataset):
         self.src_buffer = ReplayBuffer.create_from_path(self.zarr_dataset_path, mode="r")
         
         action_data = self.src_buffer["action"] # shape is (N, 7)
-        q01 = np.quantile(action_data, 0.01, axis=0)
-        q99 = np.quantile(action_data, 0.99, axis=0)
+        proprio_data_to_normalize = self.src_buffer["eef_pose_oxe"] # gripper is not normalized
+
         # Note =>> We expect the dataset to store statistics for action de-normalization. Specifically, we store the
         # per-dimension 1st and 99th action quantile. The values below correspond to "no normalization" for simplicity.
         self.dataset_statistics = {
             self.zarr_dataset_name: {
-                "action": {"q01": q01, "q99": q99}
+                "action": {"q01": np.quantile(action_data, 0.01, axis=0), "q99": np.quantile(action_data, 0.99, axis=0)},
+                "eef_pose_oxe": {"q01": np.quantile(proprio_data_to_normalize, 0.01, axis=0), "q99": np.quantile(proprio_data_to_normalize, 0.99, axis=0)}
             }
         }
 
@@ -305,6 +322,7 @@ class ZarrDataset(Dataset):
     def __len__(self):
         return self.src_buffer.n_steps
 
+
     def __getitem__(self, idx):
         # ALEKS NOTE:
         # Pytorch Dataset says that __getitems__ can also be used to get batches, speeding up data loading.
@@ -317,6 +335,24 @@ class ZarrDataset(Dataset):
 
         # action = self.src_buffer["action"][idx]
         action_chunk = get_safe_action_chunk(self.src_buffer, idx, NUM_ACTIONS_CHUNK, pad_zero_or_repeat="repeat")  # shape is (K, 7) make_dataset_from_rlds repeats the action.
+
+        # TODO: ACTION NORMALIZATION (See make_dataset_from_rlds)
+        # 'action_normalization_mask' = [True, True, True, True, True, True, False]
+        # 'action_proprio_normalization_type' = NormalizationType.BOUNDS_Q99
+        # TODO: implement normalize_action_and_proprio from data_utils.py
+
+        action_chunk[:, :6] = bounds_q99_normalize(
+            action_chunk[:, :6],
+            q01=self.dataset_statistics[self.zarr_dataset_name]["action"]["q01"][:6],
+            q99=self.dataset_statistics[self.zarr_dataset_name]["action"]["q99"][:6],
+        )
+
+
+        # TODO: Other trajectory level transforms?
+        # 'absolute_action_mask' = [False, False, False, False, False, False, True]
+        # does not seem to be used?
+        # Go through `apply_trajectory_transforms` in more detail.
+        
 
         # gripper action is in -1 (open)...1 (close) --> clip to 0...1, flip --> +1 = open, 0 = close
         gripper_actions = action_chunk[:, -1:] 
@@ -380,9 +416,15 @@ class ZarrDataset(Dataset):
             return_dict["pixel_values_wrist"] = pixel_values_wrist
 
         if self.use_proprio:
-            robot_joints = self.src_buffer["eef_pose_oxe"][idx]
+
+            robot_proprio = self.src_buffer["eef_pose_oxe"][idx]
+            robot_proprio_norm = bounds_q99_normalize(
+                robot_proprio,
+                q01=self.dataset_statistics[self.zarr_dataset_name]["eef_pose_oxe"]["q01"],
+                q99=self.dataset_statistics[self.zarr_dataset_name]["eef_pose_oxe"]["q99"],
+            )
             gripper_qpos = self.src_buffer["robot0_gripper_qpos"][idx]
-            proprio = np.concatenate([robot_joints, gripper_qpos], axis=0)
+            proprio = np.concatenate([robot_proprio_norm, gripper_qpos], axis=0)
             return_dict["proprio"] = proprio
 
         return return_dict
