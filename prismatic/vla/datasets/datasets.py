@@ -22,6 +22,7 @@ from prismatic.vla.action_tokenizer import ActionTokenizer
 from prismatic.vla.constants import ACTION_DIM, ACTION_PROPRIO_NORMALIZATION_TYPE, ACTION_TOKEN_BEGIN_IDX, IGNORE_INDEX, NUM_ACTIONS_CHUNK, PROPRIO_DIM, STOP_INDEX
 from prismatic.vla.datasets.rlds import make_interleaved_dataset, make_single_dataset
 from prismatic.vla.datasets.rlds.oxe import OXE_NAMED_MIXTURES, get_oxe_dataset_kwargs_and_weights
+from prismatic.vla.datasets.rlds.utils.data_utils import invert_gripper_actions
 
 from xembench.data_collection.replay_buffer import ReplayBuffer
 from xembench.datasets.dataset_utils import get_safe_action_chunk
@@ -314,7 +315,12 @@ class ZarrDataset(Dataset):
         # Note that the RLDS dataset does not have this issue because it samples transitions within episodes (),
         # which also means that the dataset yields fewer samples (at the end of episodes).
 
-        action_chunk = get_safe_action_chunk(self.src_buffer, idx, NUM_ACTIONS_CHUNK, pad_zero_or_repeat="zero")  # shape is (K, 7)
+        # action = self.src_buffer["action"][idx]
+        action_chunk = get_safe_action_chunk(self.src_buffer, idx, NUM_ACTIONS_CHUNK, pad_zero_or_repeat="repeat")  # shape is (K, 7) make_dataset_from_rlds repeats the action.
+
+        # gripper action is in -1 (open)...1 (close) --> clip to 0...1, flip --> +1 = open, 0 = close
+        gripper_actions = action_chunk[:, -1:] 
+        action_chunk[:, -1:] =  invert_gripper_actions(np.clip(gripper_actions, 0, 1))
 
         image = Image.fromarray(self.src_buffer["agentview_rgb"][idx])
         if self.train and self.image_aug:
@@ -324,7 +330,7 @@ class ZarrDataset(Dataset):
         # if debug_img:
         #     image.save("debug_img_zarr.png")
 
-        action = self.src_buffer["action"][idx]
+        # 
         instruction = self.src_buffer["language_instruction"][idx].lower()
 
         # assert np.array_equal(action, action_chunk[0]), "Current action does not match first action in action chunk!"
