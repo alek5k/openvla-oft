@@ -229,6 +229,13 @@ class EpisodicRLDSDataset(RLDSDataset):
 
 
 def bounds_q99_normalize(x, q01, q99, eps=1e-8, clip=True, zero_unused=True):
+    '''
+    Normalizes x to [-1, 1] based on provided 1st and 99th percentiles (q01, q99).
+    If `clip` is True, values outside [-1, 1] are clipped.
+    If `zero_unused` is True, dimensions where q01 == q99 are set to zero.
+
+    This is an implementation similar to that in `prismatic.vla.datasets.rlds.utils.data_utils.normalize_action_and_proprio`.
+    '''
     x = np.asarray(x, dtype=np.float32)
     q01 = np.asarray(q01, dtype=np.float32).reshape(1, -1)
     q99 = np.asarray(q99, dtype=np.float32).reshape(1, -1)
@@ -336,23 +343,19 @@ class ZarrDataset(Dataset):
         # action = self.src_buffer["action"][idx]
         action_chunk = get_safe_action_chunk(self.src_buffer, idx, NUM_ACTIONS_CHUNK, pad_zero_or_repeat="repeat")  # shape is (K, 7) make_dataset_from_rlds repeats the action.
 
-        # TODO: ACTION NORMALIZATION (See make_dataset_from_rlds)
+        # ACTION NORMALIZATION (See make_dataset_from_rlds)
         # 'action_normalization_mask' = [True, True, True, True, True, True, False]
         # 'action_proprio_normalization_type' = NormalizationType.BOUNDS_Q99
-        # TODO: implement normalize_action_and_proprio from data_utils.py
-
         action_chunk[:, :6] = bounds_q99_normalize(
             action_chunk[:, :6],
             q01=self.dataset_statistics[self.zarr_dataset_name]["action"]["q01"][:6],
             q99=self.dataset_statistics[self.zarr_dataset_name]["action"]["q99"][:6],
         )
 
-
         # TODO: Other trajectory level transforms?
         # 'absolute_action_mask' = [False, False, False, False, False, False, True]
         # does not seem to be used?
         # Go through `apply_trajectory_transforms` in more detail.
-        
 
         # gripper action is in -1 (open)...1 (close) --> clip to 0...1, flip --> +1 = open, 0 = close
         gripper_actions = action_chunk[:, -1:] 
@@ -416,7 +419,6 @@ class ZarrDataset(Dataset):
             return_dict["pixel_values_wrist"] = pixel_values_wrist
 
         if self.use_proprio:
-
             robot_proprio = self.src_buffer["eef_pose_oxe"][idx]
             robot_proprio_norm = bounds_q99_normalize(
                 robot_proprio,
