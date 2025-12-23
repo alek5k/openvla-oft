@@ -23,6 +23,11 @@ from prismatic.vla.constants import ACTION_DIM, ACTION_PROPRIO_NORMALIZATION_TYP
 from prismatic.vla.datasets.rlds import make_interleaved_dataset, make_single_dataset
 from prismatic.vla.datasets.rlds.oxe import OXE_NAMED_MIXTURES, get_oxe_dataset_kwargs_and_weights
 
+from xembench.data_collection.replay_buffer import ReplayBuffer
+from xembench.datasets.dataset_utils import get_safe_action_chunk
+from prismatic.vla.constants import NUM_ACTIONS_CHUNK
+import torchvision.transforms as tvt
+
 @dataclass
 class RLDSBatchTransform:
     action_tokenizer: ActionTokenizer
@@ -221,6 +226,160 @@ class EpisodicRLDSDataset(RLDSDataset):
             ]
             yield out
 
+
+
+class ZarrDataset(Dataset):
+    def __init__(
+        self,
+        action_tokenizer: ActionTokenizer,
+        base_tokenizer: PreTrainedTokenizerBase,
+        image_transform: ImageTransform,
+        prompt_builder_fn: Type[PromptBuilder],
+        zarr_dataset_root: Path,
+        zarr_dataset_name: str,
+        resize_resolution: Tuple[int, int],
+        use_wrist_image: bool = False,
+        use_proprio: bool = False,
+        train: bool = True,
+        image_aug: bool = False
+    ) -> None:
+        self.action_tokenizer = action_tokenizer
+        self.base_tokenizer = base_tokenizer
+        self.image_transform = image_transform
+        self.prompt_builder_fn = prompt_builder_fn
+        self.zarr_dataset_root = zarr_dataset_root
+        self.zarr_dataset_name = zarr_dataset_name
+        self.zarr_dataset_path = zarr_dataset_root / zarr_dataset_name
+        self.use_wrist_image = use_wrist_image
+        self.use_proprio = use_proprio
+        self.train = train
+        self.image_aug = image_aug
+        self.src_buffer = ReplayBuffer.create_from_path(self.zarr_dataset_path, mode="r")
+        
+        action_data = self.src_buffer["action"] # shape is (N, 7)
+        q01 = np.quantile(action_data, 0.01, axis=0)
+        q99 = np.quantile(action_data, 0.99, axis=0)
+        # Note =>> We expect the dataset to store statistics for action de-normalization. Specifically, we store the
+        # per-dimension 1st and 99th action quantile. The values below correspond to "no normalization" for simplicity.
+        self.dataset_statistics = {
+            self.zarr_dataset_name: {
+                "action": {"q01": q01, "q99": q99}
+            }
+        }
+
+        self.episode_ends = np.asarray(self.src_buffer.meta["episode_ends"], dtype=np.int64)
+
+        H, W = resize_resolution
+
+        self.train_image_augmentations = tvt.Compose([
+            tvt.Resize((H, W)),  # match decode_and_resize
+            tvt.RandomResizedCrop((H, W), scale=(0.9, 0.9), ratio=(1.0, 1.0)),  # fixed 90% area
+            tvt.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+            # tvt.RandomApply([tvt.GaussianBlur(kernel_size=5)], p=0.2),
+        ])
+        # RLDS aug uses a seed so all modalities are reproducible per sample. PyTorch aug randomness should be fine, but if we care about determinism across workers, 
+        # we need to set a worker seed (worker_init_fn).
+        # def seed_worker(worker_id):
+        #     # base seed is set by DataLoader generator below
+        #     worker_seed = torch.initial_seed() % 2**32
+        #     np.random.seed(worker_seed)
+        #     random.seed(worker_seed)
+        # g = torch.Generator()
+        # g.manual_seed(cfg.seed)  # your global seed
+        # Then in dataloader:
+        # worker_init_fn=seed_worker,
+        # generator=g,
+        # persistent_workers=True
+
+
+        # I think during eval, these operations occur automatically, but leaving here for now.
+        # see `prepare_images_for_vla` in `openvla_utils.py`
+        # self.eval_tf = tvt.Compose([
+        #     # tvt.Resize((H, W)),              # match decode_and_resize
+        #     # CenterCropByArea(0.9),           # deterministic "center 90% area"
+        #     # tvt.Resize((H, W)),              # resize back to model input size
+        # ])
+
+
+    def __len__(self):
+        return self.src_buffer.n_steps
+
+    def __getitem__(self, idx):
+        # ALEKS NOTE:
+        # Pytorch Dataset says that __getitems__ can also be used to get batches, speeding up data loading.
+        # However, here we only implement single index access for simplicity.
+
+        # One important note is that we need to make sure that the action chunk we get does not cross episode boundaries.
+        # So we use the utility function `get_safe_action_chunk` to get the action chunk
+        # Note that the RLDS dataset does not have this issue because it samples transitions within episodes (),
+        # which also means that the dataset yields fewer samples (at the end of episodes).
+
+        action_chunk = get_safe_action_chunk(self.src_buffer, idx, NUM_ACTIONS_CHUNK, pad_zero_or_repeat="zero")  # shape is (K, 7)
+
+        image = Image.fromarray(self.src_buffer["agentview_rgb"][idx])
+        if self.train and self.image_aug:
+            image = self.train_image_augmentations(image)
+
+        debug_img = True
+        if debug_img:
+            image.save("debug_img_zarr.png")
+
+        action = self.src_buffer["action"][idx]
+        instruction = self.src_buffer["language_instruction"][idx].lower()
+
+        # assert np.array_equal(action, action_chunk[0]), "Current action does not match first action in action chunk!"
+        # assert action_chunk.shape[0] == NUM_ACTIONS_CHUNK, "Action chunk length mismatch!"
+        
+        current_action = action_chunk[0]
+        future_actions = action_chunk[1:]
+
+        # Add instruction to VLA prompt
+        prompt_builder = self.prompt_builder_fn("openvla")
+
+        # Get future action chunk
+        future_actions_string = ''.join(self.action_tokenizer(future_actions))
+        current_action_string = self.action_tokenizer(current_action)
+        action_chunk_string = current_action_string + future_actions_string
+        action_chunk_len = len(action_chunk_string)
+
+        conversation = [
+            {"from": "human", "value": f"What action should the robot take to {instruction}?"},
+            # {"from": "gpt", "value": self.action_tokenizer(action)}, # SINGLE ACTION ONLY
+            {"from": "gpt", "value": action_chunk_string},
+        ]
+        for turn in conversation:
+            prompt_builder.add_turn(turn["from"], turn["value"])
+
+        # Tokenize (w/ `base_tokenizer`)
+        input_ids = self.base_tokenizer(prompt_builder.get_prompt(), add_special_tokens=True).input_ids
+        labels = list(input_ids)
+
+        # Tensorize =>> Run Image Transform to get `pixel_values` =>> Return
+        #   =>> IMPORTANT :: IF WE'RE USING HF .forward(..., labels=labels), SHIFTING HAPPENS _INSIDE_ MODEL!
+        input_ids, labels = torch.tensor(input_ids), torch.tensor(labels)
+        pixel_values = self.image_transform(image)
+
+        # [CRITICAL] We do not want to take the loss for anything but the predicted action tokens!
+        # labels[: -(len(action) + 1)] = IGNORE_INDEX # OLD - SINGLE ACTION ONLY
+        labels[: -(action_chunk_len + 1)] = IGNORE_INDEX
+
+        return_dict = dict(pixel_values=pixel_values, input_ids=input_ids, labels=labels, dataset_name=self.zarr_dataset_name, actions=action_chunk)
+
+        # Add additional inputs
+        if self.use_wrist_image:
+            img_wrist = Image.fromarray(self.src_buffer["robot0_eye_in_hand_rgb"][idx])
+            if self.train and self.image_aug:
+                img_wrist = self.train_image_augmentations(img_wrist)
+            pixel_values_wrist = self.image_transform(img_wrist)
+            return_dict["pixel_values_wrist"] = pixel_values_wrist
+
+        if self.use_proprio:
+            robot_joints = self.src_buffer["eef_pose_oxe"][idx]
+            gripper_qpos = self.src_buffer["robot0_gripper_qpos"][idx]
+            proprio = np.concatenate([robot_joints, gripper_qpos], axis=0)
+            return_dict["proprio"] = proprio
+
+        return return_dict
 
 class DummyDataset(Dataset):
     def __init__(
